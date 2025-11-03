@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "useGitignore": true,
+  "ignorePaths": [
+    "**/*.yml",
+    "mix.exs",
+    "mix.lock"
+  ],
+  "words": [
+    "ccitt",
+    "cerlc",
+    "exmodem",
+    "lrzsz",
+    "naks",
+    "noproc",
+    "statem",
+    "uart",
+    "xmodem"
+  ]
+}
