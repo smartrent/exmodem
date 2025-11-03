@@ -13,7 +13,7 @@ defmodule LRZWriter do
     outfile = Keyword.fetch!(opts, :outfile)
     test_pid = Keyword.fetch!(opts, :test_pid)
     checksum_mode = Keyword.get(opts, :checksum_mode, :crc)
-    lrz = System.find_executable("lrz")
+    lrz = System.find_executable("lrz") || System.find_executable("rz")
 
     args =
       if checksum_mode == :crc do

@@ -8,6 +8,7 @@ defmodule Exmodem.MixProject do
     [
       app: :exmodem,
       version: @version,
+      description: "Implements the XMODEM file transfer protocol",
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -33,7 +34,6 @@ defmodule Exmodem.MixProject do
       {:cerlc, "~> 0.2"},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.2", only: [:dev, :test], runtime: false},
-      {:erlexec, "~> 2.0", only: [:dev, :test]},
       {:ex_doc, "~> 0.39", only: :docs, runtime: false}
     ]
   end
@@ -42,9 +42,16 @@ defmodule Exmodem.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp dialyzer() do
+    ci_opts =
+      if System.get_env("CI") do
+        [plt_core_path: "_build/plts", plt_local_path: "_build/plts"]
+      else
+        []
+      end
+
     [
       flags: [:missing_return, :extra_return, :unmatched_returns, :error_handling, :underspecs]
-    ]
+    ] ++ ci_opts
   end
 
   defp docs() do
