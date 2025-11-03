@@ -1,0 +1,190 @@
+version: 2.1
+
+elixir_current: &elixir_current "1.19.2-erlang-28.1.1-alpine-3.22.2"
+elixir_prev_1: &elixir_prev_1 "1.18.4-erlang-27.3.4.4-alpine-3.22.2"
+elixir_prev_2: &elixir_prev_2 "1.17.3-erlang-27.3.4.4-alpine-3.22.2"
+
+defaults: &defaults
+  working_directory: ~/repo
+  environment:
+    LC_ALL: C.UTF-8
+    MIX_ENV: test
+  parameters:
+    image-tag:
+      description: "Docker image tag"
+      type: string
+      default: *elixir_current
+
+commands:
+  install_system_deps:
+    steps:
+      - run: apk add build-base wget
+      - run:
+          name: Install lrzsz
+          command: |
+            wget https://www.ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz
+            tar -xf lrzsz-0.12.20.tar.gz
+            cd lrzsz-0.12.20
+            ./configure --prefix=/usr/local --disable-nls
+            make && make install
+  restore_tagged_cache:
+    parameters:
+      prefix:
+        description: "Cache key prefix"
+        type: string
+    steps:
+      - restore_cache:
+          keys:
+            - << parameters.prefix >>-{{ .Branch }}-{{ checksum "mix.lock" }}
+            - << parameters.prefix >>-{{ .Branch }}-
+            - << parameters.prefix >>-
+
+jobs:
+  build:
+    <<: *defaults
+    docker:
+      - image: hexpm/elixir:<< parameters.image-tag >>
+    steps:
+      - checkout
+      - install_system_deps
+      - restore_tagged_cache:
+          prefix: v3-mix-cache-<< parameters.image-tag >>
+      - run: mix do deps.get, compile --warnings-as-errors
+      - save_cache:
+          key: v3-mix-cache-<< parameters.image-tag >>-{{ .Branch }}-{{ checksum "mix.lock" }}
+          paths:
+            - _build
+            - deps
+
+  lint:
+    <<: *defaults
+    docker:
+      - image: hexpm/elixir:<< parameters.image-tag >>
+    steps:
+      - checkout
+      - install_system_deps
+      - restore_tagged_cache:
+          prefix: v3-mix-cache-<< parameters.image-tag >>
+      - run: mix deps.unlock --check-unused
+      - run: mix format --check-formatted
+      - run: mix credo -a
+      - run: mix hex.build
+      - run: mix docs --warnings-as-errors
+
+  dialyzer:
+    <<: *defaults
+    docker:
+      - image: hexpm/elixir:<< parameters.image-tag >>
+    steps:
+      - checkout
+      - install_system_deps
+      - restore_tagged_cache:
+          prefix: v3-mix-cache-<< parameters.image-tag >>
+      - restore_tagged_cache:
+          prefix: v2-dialyzer-cache-<< parameters.image-tag >>
+      - run: mix dialyzer
+      - save_cache:
+          paths:
+            - _build/plts
+          key: v2-dialyzer-cache-<< parameters.image-tag >>-{{ .Branch }}-{{ checksum "mix.lock" }}
+
+  test:
+    <<: *defaults
+    parallelism: 2
+    docker:
+      - image: hexpm/elixir:<< parameters.image-tag >>
+    steps:
+      - checkout
+      - install_system_deps
+      - restore_tagged_cache:
+          prefix: v3-mix-cache-<< parameters.image-tag >>
+      - run:
+          name: Run tests
+          command: |
+            circleci tests glob 'test/**/*_test.exs' | \
+              circleci tests run --split-by=timings --command='xargs -n1 echo > test_file_paths.txt'
+            cat test_file_paths.txt | xargs mix test
+      - store_test_results:
+          path: test-junit-report.xml
+
+  publish:
+    <<: *defaults
+    docker:
+      - image: hexpm/elixir:<< parameters.image-tag >>
+    steps:
+      - checkout
+      - run:
+          name: Install GitHub CLI
+          command: apk add --no-cache build-base github-cli
+      - restore_tagged_cache:
+          prefix: v3-mix-cache-<< parameters.image-tag >>
+      - run:
+          name: Create GitHub Release
+          command: |
+            awk -v ver="<< pipeline.git.tag >>" '/^#+ \[/ { if (p) { exit }; if ($2 == "["ver"]") { p=1; next} } p && NF' CHANGELOG.md > release-notes.md
+            gh release create << pipeline.git.tag >> --title << pipeline.git.tag >> -F release-notes.md
+      - run:
+          name: Publish Hex
+          command: MIX_ENV=docs HEX_API_KEY=${HEX_API_WRITE_KEY} mix hex.publish --yes
+
+  spelling_and_markdownlint:
+    working_directory: ~/repo
+    environment:
+      LC_ALL: C.UTF-8
+    docker:
+      - image: node:24-alpine
+    steps:
+      - checkout
+      - run:
+          name: Setup
+          command: |
+            npm i -g cspell markdownlint-cli2
+      - run:
+          name: Spell check
+          command: cspell --quiet .
+      - run:
+          name: Lint markdown files
+          command: markdownlint-cli2
+
+workflows:
+  build_test:
+    max_auto_reruns: 3
+    jobs:
+      - build:
+          filters: pipeline.git.tag
+          matrix:
+            parameters:
+              image-tag:
+                - *elixir_current
+                - *elixir_prev_1
+                - *elixir_prev_2
+      - lint:
+          filters: pipeline.git.tag
+          image-tag: *elixir_current
+          requires:
+            - build
+      - dialyzer:
+          filters: pipeline.git.tag
+          image-tag: *elixir_current
+          requires:
+            - build
+      - test:
+          filters: pipeline.git.tag
+          requires:
+            - build
+          matrix:
+            parameters:
+              image-tag:
+                - *elixir_current
+                - *elixir_prev_1
+                - *elixir_prev_2
+      - publish:
+          context:
+            - github-token
+          filters: pipeline.git.tag starts-with "v"
+          image-tag: *elixir_current
+          requires:
+            - lint
+            - dialyzer
+            - test
+      - spelling_and_markdownlint
