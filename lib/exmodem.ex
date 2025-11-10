@@ -226,10 +226,11 @@ defmodule Exmodem do
         :sending,
         %{
           buffer: buffer,
-          position: position
+          position: position,
+          packet_size: packet_size
         } = data
       )
-      when position + 128 > byte_size(buffer) do
+      when position + packet_size > byte_size(buffer) do
     {:next_state, :sent_eot, %{data | cancels: 0, retries: 0},
      [{:reply, from, {:send, <<@eot>>}}]}
   end
@@ -238,7 +239,7 @@ defmodule Exmodem do
   def handle_event({:call, from}, {:receive, <<@ack>>}, :sending, data) do
     data = %{
       data
-      | position: data.position + 128,
+      | position: data.position + data.packet_size,
         packet_number: next_packet_number(data.packet_number),
         retries: 0
     }
@@ -287,7 +288,7 @@ defmodule Exmodem do
   end
 
   defp packet(data) do
-    buf = data.buffer |> binary_slice(data.position, 128)
+    buf = binary_slice(data.buffer, data.position, data.packet_size)
 
     Exmodem.Packet.build(data.packet_number, buf,
       checksum_mode: data.checksum_mode,
