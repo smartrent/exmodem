@@ -15,7 +15,10 @@ defmodule Exmodem.MixProject do
       deps: deps(),
       docs: docs(),
       package: package(),
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      test_coverage: [
+        ignore_modules: [LRZWriter]
+      ]
     ]
   end
 
