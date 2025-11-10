@@ -27,6 +27,23 @@ defmodule ExmodemTest do
     assert {:error, :max_retries_exceeded} = Exmodem.receive_data(driver, <<0x15>>)
   end
 
+  test "xmodem-1k" do
+    data = :binary.copy(<<"0123456789ABCDEF\n">>, 10000)
+
+    {:ok, pid} =
+      Exmodem.start_link(:binary.copy(<<"0123456789ABCDEF\n">>, 10000), packet_size: 1024)
+
+    p1 = binary_slice(data, 0, 1024)
+
+    assert {:send, <<2, 1, 254, ^p1::1024-bytes, _::16>> = packet} =
+             Exmodem.receive_data(pid, <<?C>>)
+
+    p2 = binary_slice(data, 1024, 1024)
+
+    assert {:send, <<2, 2, 253, ^p2::binary, _::16>> = packet} =
+             Exmodem.receive_data(pid, <<0x06>>)
+  end
+
   test "timeouts" do
     Process.flag(:trap_exit, true)
 
