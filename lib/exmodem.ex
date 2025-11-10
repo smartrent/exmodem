@@ -118,7 +118,7 @@ defmodule Exmodem do
   def cancel(server) do
     :gen_statem.call(server, :sender_cancel)
   catch
-    :exit, {:noproc, _} -> :done
+    :exit, {:noproc, _} -> :ok
   end
 
   @doc """
@@ -138,6 +138,8 @@ defmodule Exmodem do
   def stop(server) do
     :gen_statem.stop(server, :normal, :timer.seconds(5))
   catch
+    # gen_statem is weird
+    :exit, :noproc -> :ok
     :exit, {:noproc, _} -> :ok
   end
 

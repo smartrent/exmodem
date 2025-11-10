@@ -13,13 +13,14 @@ defmodule LRZWriter do
     outfile = Keyword.fetch!(opts, :outfile)
     test_pid = Keyword.fetch!(opts, :test_pid)
     checksum_mode = Keyword.get(opts, :checksum_mode, :crc)
+    extra_lrz_args = Keyword.get(opts, :extra_lrz_args, [])
     lrz = System.find_executable("lrz") || System.find_executable("rz")
 
     args =
       if checksum_mode == :crc do
-        ["-q", "--with-crc", "--xmodem", outfile]
+        ["-q", "--with-crc", "--xmodem"] ++ extra_lrz_args ++ [outfile]
       else
-        ["-q", "--xmodem", outfile]
+        ["-q", "--xmodem"] ++ extra_lrz_args ++ [outfile]
       end
 
     port =
