@@ -10,6 +10,18 @@ defmodule ExmodemTest do
     %{outfile: outfile}
   end
 
+  test "happy path" do
+    {:ok, driver} = Exmodem.start_link(:binary.copy("0123456789ABCDEF\n", 20))
+
+    assert {0, 3} = Exmodem.progress(driver)
+    assert {:send, <<1, 1, _rest::binary>>} = Exmodem.receive_data(driver, <<?C>>)
+    assert {1, 3} = Exmodem.progress(driver)
+    assert {:send, <<1, 2, _rest::binary>>} = Exmodem.receive_data(driver, <<0x06>>)
+    assert {2, 3} = Exmodem.progress(driver)
+    assert {:send, <<1, 3, _rest::binary>>} = Exmodem.receive_data(driver, <<0x06>>)
+    assert {3, 3} = Exmodem.progress(driver)
+  end
+
   test "cancellation" do
     {:ok, driver} = Exmodem.start_link("0123456789ABCDEF\n")
 

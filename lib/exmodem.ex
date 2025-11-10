@@ -122,6 +122,16 @@ defmodule Exmodem do
   end
 
   @doc """
+  Gets the progress of the current transfer as a tuple of
+  `{sent_packets, total_packets}`.
+  """
+  def progress(server) do
+    :gen_statem.call(server, :progress)
+  catch
+    :exit, {:noproc, _} -> {:error, :no_process}
+  end
+
+  @doc """
   Stops the XMODEM driver state machine.
   """
   @spec stop(:gen_statem.server_ref()) :: :ok
@@ -143,14 +153,18 @@ defmodule Exmodem do
         other -> raise ArgumentError, "Invalid padding option: #{inspect(other)}"
       end
 
+    packet_size = Keyword.get(opts, :packet_size, 128)
+
     {:ok, :init,
      %{
        buffer: input,
+       sent_packets: 0,
+       total_packets: ceil(byte_size(input) / packet_size),
        position: 0,
        packet_number: 1,
        checksum_mode: nil,
        recv_timeout: Keyword.get(opts, :recv_timeout, :timer.seconds(5)),
-       packet_size: Keyword.get(opts, :packet_size, 128),
+       packet_size: packet_size,
        max_retries: Keyword.get(opts, :max_retries, 2),
        padding: padding,
        retries: 0,
@@ -208,7 +222,7 @@ defmodule Exmodem do
 
     packet = packet(data)
 
-    {:next_state, :sending, %{data | cancels: 0},
+    {:next_state, :sending, %{data | cancels: 0, sent_packets: data.sent_packets + 1},
      [
        {:reply, from, {:send, packet}}
      ]}
@@ -240,12 +254,14 @@ defmodule Exmodem do
       data
       | position: data.position + 128,
         packet_number: next_packet_number(data.packet_number),
+        sent_packets: data.sent_packets + 1,
+        cancels: 0,
         retries: 0
     }
 
     packet = packet(data)
 
-    {:repeat_state, %{data | cancels: 0, retries: 0}, [{:reply, from, {:send, packet}}]}
+    {:repeat_state, data, [{:reply, from, {:send, packet}}]}
   end
 
   # Receive nak when in sending state and exceeded max retries. Abort.
@@ -284,6 +300,13 @@ defmodule Exmodem do
 
   def handle_event({:call, from}, :sender_cancel, _state, _data) do
     {:stop_and_reply, :normal, [{:reply, from, {:send, <<@can, @can>>}}]}
+  end
+
+  def handle_event({:call, from}, :progress, _state, data) do
+    {:keep_state_and_data,
+     [
+       {:reply, from, {data.sent_packets, data.total_packets}}
+     ]}
   end
 
   defp packet(data) do
