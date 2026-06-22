@@ -7,7 +7,7 @@ elixir = "1.19.2-otp-28"
 
 [settings]
 lockfile = true
-paranoid = true
+locked = true
 lockfile_platforms = ["linux-x64", "macos-arm64"]  # requires mise >= 2026.4.8
 
 [shell_alias]
